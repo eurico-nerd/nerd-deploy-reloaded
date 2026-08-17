@@ -397,7 +397,7 @@ export class SFTPClient extends deploy_clients.AsyncFileListBase {
                 );
 
                 const DOWNLOADED_DATA = await deploy_helpers.asBuffer(
-                    await ME.client.get(path, null, null)
+                    await ME.client.get(path)
                 );
 
                 await this.executeCommandsBy(
@@ -467,7 +467,7 @@ export class SFTPClient extends deploy_clients.AsyncFileListBase {
                                     const WRITE_TO = deploy_helpers.normalizeString(entry.writeOutputTo);
                                     if ('' !== WRITE_TO) {
                                         let outputToWrite: any = _.isNil(output) ? output
-                                                                                 : output.toString(enc);
+                                                                                 : output.toString(<BufferEncoding>enc);
 
                                         const EXECUTE_BEFORE_WRITE = deploy_helpers.toStringSafe( entry.executeBeforeWriteOutputTo );
                                         if (!deploy_helpers.isEmptyString(EXECUTE_BEFORE_WRITE)) {
@@ -550,7 +550,7 @@ export class SFTPClient extends deploy_clients.AsyncFileListBase {
 
                                     try {
                                         if (!Buffer.isBuffer(chunk)) {
-                                            chunk = new Buffer(deploy_helpers.toStringSafe(chunk), enc);
+                                            chunk = new Buffer(deploy_helpers.toStringSafe(chunk), <BufferEncoding>enc);
                                         }
 
                                         output = Buffer.concat([ output, chunk ]);
@@ -974,36 +974,77 @@ export async function openConnection(opts: SFTPConnectionOptions): Promise<SFTPC
 
     const DEBUG = deploy_helpers.toBooleanSafe(opts.debug);
 
-    await CLIENT.client.connect({
-        agent: agent,
-        agentForward: deploy_helpers.toBooleanSafe(opts.agentForward),
-        hostHash: hashAlgo,
-        hostVerifier: (keyHash) => {
-            if (hashes.length < 1) {
-                return true;
+    // ssh2-sftp-client v12 re-wraps the underlying ssh2 error and can surface
+    // an unhelpful, near-empty message (e.g. "getConnection:"). Capture the
+    // real ssh2 error here so we can throw something meaningful on failure.
+    const SSH2_CLIENT: any = CLIENT.client ? CLIENT.client['client'] : undefined;
+    let connectionError: any;
+    const CAPTURE_ERROR = (err: any) => {
+        connectionError = err;
+    };
+    if (SSH2_CLIENT && 'function' === typeof SSH2_CLIENT.on) {
+        SSH2_CLIENT.on('error', CAPTURE_ERROR);
+    }
+
+    try {
+        await CLIENT.client.connect({
+            agent: agent,
+            agentForward: deploy_helpers.toBooleanSafe(opts.agentForward),
+            hostHash: hashAlgo,
+            hostVerifier: (keyHash) => {
+                if (hashes.length < 1) {
+                    return true;
+                }
+
+                keyHash = deploy_helpers.normalizeString(keyHash);
+                return hashes.indexOf(keyHash) > -1;
+            },
+            host: host,
+            passphrase: privateKeyPassphrase,
+            password: pwd,
+            port: port,
+            privateKey: privateKey,
+            readyTimeout: readyTimeout,
+            tryKeyboard: deploy_helpers.toBooleanSafe(opts.tryKeyboard),
+            username: user,
+
+            debug: (info) => {
+                if (!DEBUG) {
+                    return;
+                }
+
+                deploy_log.CONSOLE
+                          .debug(info, `clients.sftp`);
             }
+        });
+    }
+    catch (e) {
+        // Prefer the real ssh2 error (captured above) over v12's wrapped one.
+        const REAL: any = connectionError || e;
 
-            keyHash = deploy_helpers.normalizeString(keyHash);
-            return hashes.indexOf(keyHash) > -1;
-        },
-        host: host,
-        passphrase: privateKeyPassphrase,
-        password: pwd,
-        port: port,
-        privateKey: privateKey,
-        readyTimeout: readyTimeout,
-        tryKeyboard: deploy_helpers.toBooleanSafe(opts.tryKeyboard),
-        username: user,
-
-        debug: (info) => {
-            if (!DEBUG) {
-                return;
-            }
-
-            deploy_log.CONSOLE
-                      .debug(info, `clients.sftp`);
+        let detail = deploy_helpers.toStringSafe(REAL ? REAL.message : '').trim();
+        // strip ssh2-sftp-client's internal "getConnection:" prefix if it leaked through
+        detail = detail.replace(/^getConnection:\s*/i, '').trim();
+        if (deploy_helpers.isEmptyString(detail)) {
+            // fall back to the error code (e.g. ECONNREFUSED, ETIMEDOUT, ENOTFOUND)
+            detail = deploy_helpers.toStringSafe(REAL ? REAL.code : '').trim();
         }
-    });
+
+        let message = `SFTP connection to '${ host }:${ port }' failed`;
+        if (!deploy_helpers.isEmptyString(detail)) {
+            message += `: ${ detail }`;
+        }
+
+        const CONNECT_ERROR: any = new Error(message);
+        CONNECT_ERROR.code = REAL ? REAL.code : undefined;
+
+        throw CONNECT_ERROR;
+    }
+    finally {
+        if (SSH2_CLIENT && 'function' === typeof SSH2_CLIENT.removeListener) {
+            SSH2_CLIENT.removeListener('error', CAPTURE_ERROR);
+        }
+    }
 
     await CLIENT.executeCommandsBy(
         (o) => o.commands.connected,

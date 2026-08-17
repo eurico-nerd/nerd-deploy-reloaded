@@ -1,4 +1,5 @@
 .github/**
+.claude/**
 .vscode/**
 .vscode-test/**
 img/**
@@ -12,4 +13,4 @@ package-lock.json
 tsconfig.json
 pushall.sh
 typedoc.cmd
-tslint.json
+eslint.config.mjs

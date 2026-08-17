@@ -18,7 +18,7 @@
 import * as deploy_contracts from './contracts';
 import * as deploy_helpers from './helpers';
 import * as deploy_res_html from './resources/html';
-import * as Marked from 'marked';
+import { marked as Marked } from 'marked';
 const MergeDeep = require('merge-deep');
 import * as vscode from 'vscode';
 
@@ -65,7 +65,7 @@ let nextHtmlDocId = Number.MIN_SAFE_INTEGER;
  */
 export async function openHtmlDocument(html: string, title?: string, id?: any): Promise<any> {
     let body: Buffer;
-    let enc = 'utf8';
+    let enc: BufferEncoding = 'utf8';
     if (!deploy_helpers.isNullOrUndefined(html)) {
         body = new Buffer(deploy_helpers.toStringSafe(html), enc);
     }
@@ -122,7 +122,6 @@ export async function openMarkdownDocument(md: string, opts?: MarkdownDocumentOp
         breaks: true,
         gfm: true,
         langPrefix: '',
-        tables: true,
     };
 
     const CSS = deploy_helpers.toStringSafe(opts.css);
@@ -141,7 +140,7 @@ ${CSS}
 `;
     }
 
-    html += Marked(
+    html += Marked.parse(
         deploy_helpers.toStringSafe(md),
         MergeDeep(DEFAULT_OPTS, opts),
     );

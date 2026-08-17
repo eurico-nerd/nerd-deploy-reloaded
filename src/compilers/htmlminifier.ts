@@ -17,7 +17,7 @@
 
 import * as deploy_compilers from '../compilers';
 import * as deploy_helpers from '../helpers';
-import * as HtmlMinifier from 'html-minifier';
+import * as HtmlMinifier from 'html-minifier-terser';
 import * as Path from 'path';
 
 
@@ -80,10 +80,10 @@ export async function compile(compileOpts: CompileOptions) {
         ).trim();
     }
 
-    let enc = deploy_helpers.normalizeString(
+    let enc = <BufferEncoding>deploy_helpers.normalizeString(
         WORKSPACE.replaceWithValues(compileOpts.encoding)
     );
-    if ('' === enc) {
+    if ('' === <string>enc) {
         enc = 'utf8';
     }
 
@@ -117,8 +117,8 @@ export async function compile(compileOpts: CompileOptions) {
             }
             outputFile = Path.resolve(outputFile);
 
-            const MINI_HTML = HtmlMinifier.minify((await deploy_helpers.readFile(FTC)).toString(enc),
-                                                  OPTS);
+            const MINI_HTML = await HtmlMinifier.minify((await deploy_helpers.readFile(FTC)).toString(enc),
+                                                        OPTS);
 
             await deploy_helpers.writeFile(outputFile,
                                            new Buffer(MINI_HTML, enc));

@@ -1310,8 +1310,8 @@ export class Workspace extends deploy_helpers.WorkspaceBase implements deploy_co
         const DEFAULT_OPTS: deploy_helpers.FastGlobOptions = {
             absolute: true,
             cwd: this.rootPath,
-            deep: true,
-            followSymlinkedDirectories: true,
+            deep: Infinity,
+            followSymbolicLinks: true,
             stats: false,
             ignore: exclude,
             onlyFiles: true,
@@ -4995,6 +4995,11 @@ export class WorkspaceMemento implements vscode.Memento {
             this.normalizeKey(key),
             defaultValue
         );
+    }
+
+    /** @inheritdoc */
+    public keys(): readonly string[] {
+        return this._MEMENTO.keys();
     }
 
     private normalizeKey(key: any) {
